@@ -1427,10 +1427,12 @@ const Mirror = (function(){
      The salon room is a second WebGL context — the two cannot share a
      texture, so the room hands us a frame through a small 2D canvas.
      256px is plenty: it is a reflection, not a photograph. */
-  const rcv = document.createElement('canvas'); rcv.width = rcv.height = 256;
-  const rctx = rcv.getContext('2d');
+  const WEAK = (navigator.deviceMemory && navigator.deviceMemory < 4) ||
+               (navigator.hardwareConcurrency && navigator.hardwareConcurrency <= 4);
+  const rcv = document.createElement('canvas'); rcv.width = rcv.height = 192;
+  const rctx = rcv.getContext('2d', {willReadFrequently:false});
   let roomTex = null, rFrame = 0;
-  if(window.THREE){
+  if(window.THREE && !WEAK){
     roomTex = new THREE.CanvasTexture(rcv);
     roomTex.minFilter = roomTex.magFilter = THREE.LinearFilter;
     roomTex.generateMipmaps = false;
@@ -1438,9 +1440,9 @@ const Mirror = (function(){
   }
   window.__roomTap = function(src){
     if(!roomTex || !mat) return;
-    if((rFrame++ % 3) !== 0) return;                 /* ~20fps is enough */
+    if((rFrame++ % 4) !== 0) return;                 /* 15fps is enough */
     try{
-      rctx.drawImage(src, 0, 0, 256, 256);
+      rctx.drawImage(src, 0, 0, 192, 192);
       roomTex.needsUpdate = true;
       mat.uniforms.uRoomOn.value = Math.min(1, mat.uniforms.uRoomOn.value + 0.05);
     }catch(e){}
@@ -1649,6 +1651,12 @@ const Mirror = (function(){
     scene.add(new THREE.Mesh(new THREE.PlaneGeometry(2,2), mat));
     clock = new THREE.Clock();
     resize(); addEventListener('resize', resize);
+
+    /* a lost context is recoverable — ask for it back instead of dying */
+    cv.addEventListener('webglcontextlost', function(ev){
+      ev.preventDefault();
+      if(mat) mat.uniforms.uRoomOn.value = 0;
+    }, false);
 
     const stage = document.querySelector('.stage');
     addEventListener('pointermove', function(e){
@@ -2255,8 +2263,7 @@ addEventListener('webglcontextlost', function(){
   function build(cv){
 
   var renderer;
-  try{ renderer = new THREE.WebGLRenderer({canvas:cv, alpha:true, antialias:true,
-         preserveDrawingBuffer:true}); }
+  try{ renderer = new THREE.WebGLRenderer({canvas:cv, alpha:true, antialias:true}); }
   catch(e){ return; }
   renderer.setPixelRatio(Math.min(devicePixelRatio||1, 1.75));
 
